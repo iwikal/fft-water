@@ -9,6 +9,7 @@ use luminance::{
 use sdl2;
 use std::cell::RefCell;
 use std::rc::Rc;
+use tiny_ecs;
 
 mod camera;
 
@@ -104,6 +105,19 @@ fn main() {
     let mut camera =
         camera::Camera::persp(width as f32 / height as f32, 0.9, 0.1, 100.0);
 
+    let mut entities = tiny_ecs::Entities::new(Some(64), Some(24));
+
+    struct Primitive {
+        tess: Tess<Vertex>,
+    }
+
+    entities
+        .new_entity()
+        .with(Primitive { tess: triangles })
+        .unwrap()
+        .finalise()
+        .unwrap();
+
     use std::time::Instant;
     let mut previous_frame_start = Instant::now();
     'app: loop {
@@ -152,10 +166,16 @@ fn main() {
                     uniform_interface
                         .view_projection
                         .update(view_projection.into());
+
                     use luminance::render_state::RenderState;
                     render_gate.render(RenderState::default(), |tess_gate| {
-                        let tess = &triangles;
-                        tess_gate.render(&mut graphics_context, tess.into());
+                        let components =
+                            entities.borrow_mut::<Primitive>().unwrap();
+                        for component in components.get() {
+                            let (_id, Primitive { tess }) = component;
+                            tess_gate
+                                .render(&mut graphics_context, tess.into());
+                        }
                     })
                 });
             },
