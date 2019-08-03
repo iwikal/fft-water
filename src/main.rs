@@ -42,9 +42,11 @@ const SHADER_FS: &str = include_str!("../shaders/example.frag");
 fn main() {
     let sdl = sdl2::init().expect("Could not init sdl2");
     let video_system = sdl.video().expect("Could not initialize video system");
+    sdl.mouse().set_relative_mouse_mode(true);
     let window = video_system
         .window("Hello", SCREEN_WIDTH, SCREEN_HEIGHT)
         .opengl()
+        .fullscreen_desktop()
         .build()
         .expect("Could not create window");
     let _gl_context = window.gl_create_context().unwrap();
