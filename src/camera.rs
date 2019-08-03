@@ -18,9 +18,8 @@ impl Camera {
         }
     }
 
-    pub fn persp(width: f32, height: f32, near: f32, far: f32) -> Camera {
-        let fov = 1.0; // radians
-        let projection = glm::perspective_rh(fov, width / height, near, far);
+    pub fn persp(aspect: f32, fov: f32, near: f32, far: f32) -> Camera {
+        let projection = glm::perspective_rh(aspect, fov, near, far);
         Camera::new(projection)
     }
 

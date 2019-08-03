@@ -101,7 +101,7 @@ fn main() {
     );
 
     let mut camera =
-        camera::Camera::persp(width as f32, height as f32, 0.1, 100.0);
+        camera::Camera::persp(width as f32 / height as f32, 0.9, 0.1, 100.0);
 
     use std::time::Instant;
     let mut previous_frame_start = Instant::now();
