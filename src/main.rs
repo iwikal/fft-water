@@ -17,6 +17,7 @@ const SCREEN_WIDTH: u32 = 800;
 const SCREEN_HEIGHT: u32 = 600;
 
 struct SdlContext {
+    _gl_context: sdl2::video::GLContext,
     window: sdl2::video::Window,
     state: Rc<RefCell<GraphicsState>>,
 }
@@ -31,6 +32,12 @@ unsafe impl GraphicsContext for SdlContext {
     }
 }
 
+impl Drop for SdlContext {
+    fn drop(&mut self) {
+        panic!("Are you sure you want to drop the GLContext?");
+    }
+}
+
 uniform_interface! {
     struct ShaderInterface {
         view_projection: luminance::linear::M44
@@ -42,25 +49,30 @@ const SHADER_FS: &str = include_str!("../shaders/example.frag");
 
 fn main() {
     let sdl = sdl2::init().expect("Could not init sdl2");
-    let video_system = sdl.video().expect("Could not initialize video system");
-    sdl.mouse().set_relative_mouse_mode(true);
-    let window = video_system
-        .window("Hello", SCREEN_WIDTH, SCREEN_HEIGHT)
-        .opengl()
-        .fullscreen_desktop()
-        .build()
-        .expect("Could not create window");
-    let _gl_context = window.gl_create_context().unwrap();
-    gl::load_with(|s| video_system.gl_get_proc_address(s) as *const _);
 
-    let state = GraphicsState::new().unwrap();
+    let mut graphics_context = {
+        let video_system = sdl.video().expect("Could not initialize video system");
+        sdl.mouse().set_relative_mouse_mode(true);
 
-    let (width, height) = window.size();
+        let window = video_system
+            .window("Hello", SCREEN_WIDTH, SCREEN_HEIGHT)
+            .opengl()
+            .fullscreen_desktop()
+            .build()
+            .expect("Could not create window");
+        let _gl_context = window.gl_create_context().expect("Could not create OpenGL context");
+        gl::load_with(|s| video_system.gl_get_proc_address(s) as *const _);
 
-    let mut graphics_context = SdlContext {
-        window,
-        state: Rc::new(RefCell::new(state)),
+        let state = GraphicsState::new().expect("Only one graphics state per thread allowed");
+
+        SdlContext {
+            _gl_context,
+            window,
+            state: Rc::new(RefCell::new(state)),
+        }
     };
+
+    let (width, height) = graphics_context.window.size();
 
     type Position = [f32; 3];
     type RGB = [f32; 3];
@@ -184,4 +196,6 @@ fn main() {
         graphics_context.swap_buffers();
         previous_frame_start = current_frame_start;
     }
+
+    std::mem::forget(graphics_context);
 }
