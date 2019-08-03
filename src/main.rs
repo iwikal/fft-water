@@ -59,7 +59,7 @@ fn main() {
         state: Rc::new(RefCell::new(state)),
     };
 
-    type Position = [f32; 2];
+    type Position = [f32; 3];
     type RGB = [f32; 3];
     type Vertex = (Position, RGB);
 
@@ -78,15 +78,14 @@ fn main() {
     let mut back_buffer = Framebuffer::back_buffer([width, height]);
 
     let vertices = [
-        ([0.5, -0.5], [0.0, 1.0, 0.0]),
-        ([0.0, 0.5], [0.0, 0.0, 1.0]),
-        ([-0.5, -0.5], [1.0, 0.0, 0.0]),
-        ([0.5, 0.5], [0.0, 1.0, 0.0]),
-        ([0.0, -0.5], [0.0, 0.0, 1.0]),
-        ([-0.5, 0.5], [1.0, 0.0, 0.0]),
+        ([0.5, -0.5, -1.0], [0.0, 1.0, 0.0]),
+        ([0.0, 0.5, -1.0], [0.0, 0.0, 1.0]),
+        ([-0.5, -0.5, -1.0], [1.0, 0.0, 0.0]),
+        ([0.5, 0.5, -1.0], [0.0, 1.0, 0.0]),
+        ([0.0, -0.5, -1.0], [0.0, 0.0, 1.0]),
+        ([-0.5, 0.5, -1.0], [1.0, 0.0, 0.0]),
     ];
 
-    // Indices into TRI_VERTICES to use to build up the triangles.
     let indices = [
         0, 1, 2, // first triangle
         3, 4, 5, // second triangle
