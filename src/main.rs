@@ -10,7 +10,7 @@ use luminance::{
     pixel::RGBA32F,
     state::GraphicsState,
     tess::{Mode, Tess},
-    texture::{Dim2, Flat, Texture},
+    texture::{Dim2, Flat},
 };
 use sdl2;
 use std::cell::RefCell;
@@ -18,7 +18,9 @@ use std::rc::Rc;
 use tiny_ecs;
 
 mod camera;
+mod fft;
 mod ocean;
+mod shader;
 
 const SCREEN_WIDTH: u32 = 800;
 const SCREEN_HEIGHT: u32 = 600;
@@ -102,24 +104,33 @@ fn main() {
 
     let ocean_shader = ocean::shader();
 
+    let h0k = fft::H0k::new(&mut graphics_context);
+    {
+        let builder = graphics_context.pipeline_builder();
+        h0k.render(&mut graphics_context, &builder);
+    }
+
+    let hkt = fft::Hkt::new(&mut graphics_context);
+
     uniform_interface! {
         struct DebugShaderInterface {
             input_texture: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>
         }
     }
 
-    let (framebuffer_debug_shader, _) = Program::<(), (), DebugShaderInterface>::from_strings(
-        None,
-        include_str!("../shaders/framebuffer-debug.vert"),
-        None, 
-        include_str!("../shaders/framebuffer-debug.frag"),
-    ).unwrap();
-    let quad = Tess::attributeless(&mut graphics_context, Mode::TriangleStrip, 4);
+    let (framebuffer_debug_shader, _) =
+        Program::<(), (), DebugShaderInterface>::from_strings(
+            None,
+            include_str!("../shaders/quad.vert"),
+            None,
+            include_str!("../shaders/framebuffer-debug.frag"),
+        )
+        .unwrap();
+    let quad =
+        Tess::attributeless(&mut graphics_context, Mode::TriangleStrip, 4);
 
     let mut event_pump = sdl.event_pump().unwrap();
     let mut back_buffer = Framebuffer::back_buffer([width, height]);
-    let mut offscreen_buffer =
-        Framebuffer::<Flat, Dim2, Texture<Flat, Dim2, RGBA32F>, ()>::new(&mut graphics_context, [width, height], 0).expect("framebuffer creation");
 
     let triangles = {
         let vertices = [
@@ -169,8 +180,9 @@ fn main() {
         .unwrap();
 
     use std::time::Instant;
-    let mut previous_frame_start = Instant::now();
-    let mut debug_framebuffer = false;
+    let start = Instant::now();
+    let mut previous_frame_start = start;
+    let mut debug_framebuffer = true;
     'app: loop {
         let current_frame_start = Instant::now();
         let delta_t = current_frame_start - previous_frame_start;
@@ -210,8 +222,6 @@ fn main() {
         if let Some([width, height]) = resize {
             let size = [width as u32, height as u32];
             back_buffer = Framebuffer::back_buffer(size);
-            offscreen_buffer = Framebuffer::new(&mut graphics_context, size, 0)
-                .expect("framebuffer creation");
         }
 
         camera
@@ -219,11 +229,15 @@ fn main() {
 
         use luminance::render_state::RenderState;
         let builder = graphics_context.pipeline_builder();
-        builder.pipeline(
-            &offscreen_buffer,
-            [1.0, 1.0, 0.0, 1.0],
-            |_, shader_gate| {
-            },
+
+        let duration = current_frame_start - start;
+        let f_time = duration.as_secs() as f32
+            + duration.subsec_nanos() as f32 / 1_000_000_000.0;
+        hkt.render(
+            &mut graphics_context,
+            &builder,
+            f_time,
+            &h0k.framebuffer.color_slot(),
         );
 
         builder.pipeline(
@@ -231,16 +245,23 @@ fn main() {
             [0.0, 0.0, 0.0, 0.0],
             |pipeline, shader_gate| {
                 if debug_framebuffer {
-                    let bound_texture = pipeline.bind_texture(offscreen_buffer.color_slot());
-                    shader_gate.shade(&framebuffer_debug_shader, |render_gate, iface| {
-                        iface.input_texture.update(&bound_texture);
-                        render_gate.render(RenderState::default(), |tess_gate| {
-                            tess_gate.render(
-                                &mut graphics_context,
-                                (&quad).into(),
+                    let bound_texture =
+                        pipeline.bind_texture(hkt.framebuffer.color_slot());
+                    shader_gate.shade(
+                        &framebuffer_debug_shader,
+                        |render_gate, iface| {
+                            iface.input_texture.update(&bound_texture);
+                            render_gate.render(
+                                RenderState::default(),
+                                |tess_gate| {
+                                    tess_gate.render(
+                                        &mut graphics_context,
+                                        (&quad).into(),
+                                    );
+                                },
                             );
-                        });
-                    });
+                        },
+                    );
                 } else {
                     let view_projection = camera.projection() * camera.view();
                     shader_gate.shade(
@@ -253,10 +274,12 @@ fn main() {
                             render_gate.render(
                                 RenderState::default(),
                                 |tess_gate| {
-                                    let components =
-                                        entities.borrow_mut::<Primitive>().unwrap();
+                                    let components = entities
+                                        .borrow_mut::<Primitive>()
+                                        .unwrap();
                                     for component in components.get() {
-                                        let (_id, Primitive { tess }) = component;
+                                        let (_id, Primitive { tess }) =
+                                            component;
                                         tess_gate.render(
                                             &mut graphics_context,
                                             tess.into(),
@@ -265,7 +288,7 @@ fn main() {
                                 },
                             )
                         },
-                        );
+                    );
                     shader_gate.shade(
                         &ocean_shader,
                         |render_gate, uniform_interface| {
@@ -283,9 +306,9 @@ fn main() {
                                         let side = 8;
                                         for x in 0..side {
                                             for y in 0..side {
-                                                uniform_interface.set_offset(
-                                                    [x as f32, y as f32]
-                                                );
+                                                uniform_interface.set_offset([
+                                                    x as f32, y as f32,
+                                                ]);
                                                 tess_gate.render(
                                                     &mut graphics_context,
                                                     tess.into(),
@@ -294,11 +317,10 @@ fn main() {
                                         }
                                     }
                                 },
-                                )
+                            )
                         },
-                        );
+                    );
                 }
-
             },
         );
 

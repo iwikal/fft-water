@@ -16,7 +16,7 @@ impl ShaderInterface {
     pub fn set_view_projection(&self, value: M44) {
         self.view_projection.update(value);
     }
-    
+
     pub fn set_offset(&self, value: [f32; 2]) {
         self.offset.update(value);
     }
