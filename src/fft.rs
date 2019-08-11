@@ -2,7 +2,7 @@ use luminance::{
     context::GraphicsContext,
     framebuffer::Framebuffer,
     pipeline::{BoundTexture, Builder},
-    pixel::{RG32F, RGBA32F},
+    pixel::RGBA32F,
     shader::program::Program,
     tess::{Mode, Tess},
     texture::{Dim2, Flat, Texture},
@@ -145,4 +145,56 @@ impl Hkt {
             },
         );
     }
+}
+
+type TwiddleTexture = Texture<Flat, Dim2, RGBA32F>;
+
+pub fn twiddle_indices(context: &mut impl GraphicsContext) -> TwiddleTexture {
+    use luminance::texture::{MagFilter, MinFilter, Sampler};
+    let mut sampler = Sampler::default();
+    sampler.mag_filter = MagFilter::Nearest;
+    sampler.min_filter = MinFilter::Nearest;
+
+    let bits = (N as f32).log2() as u32;
+    let width = bits;
+    let height = N;
+    let texture = Texture::new(context, [width, height], 0, &sampler).unwrap();
+    {
+        const TAU: f32 = std::f32::consts::PI * 2.0;
+
+        let length = width * height;
+        let mut pixels = Vec::with_capacity(length as usize);
+        for y in 0..height {
+            for x in 0..width {
+                let nf = N as f32;
+                let span = u32::pow(2, x);
+
+                let index = span * 2;
+
+                let k = (y as f32 * nf / index as f32) % nf;
+                let t = TAU * k / nf;
+
+                let top_wing = y % index < span;
+
+                let reverse = |i: u32| i.reverse_bits().rotate_left(bits);
+
+                let (mut z, mut w) = if top_wing {
+                    (y, y + span)
+                } else {
+                    (y - span, y)
+                };
+
+                if x == 0 {
+                    z = reverse(z);
+                    w = reverse(w);
+                }
+
+                pixels.push((t.cos(), t.sin(), z as f32, w as f32));
+            }
+        }
+
+        texture.upload(false, &pixels);
+    }
+
+    texture
 }

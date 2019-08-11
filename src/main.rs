@@ -179,6 +179,8 @@ fn main() {
         .finalise()
         .unwrap();
 
+    let twiddles = fft::twiddle_indices(&mut graphics_context);
+
     use std::time::Instant;
     let start = Instant::now();
     let mut previous_frame_start = start;
@@ -245,8 +247,7 @@ fn main() {
             [0.0, 0.0, 0.0, 0.0],
             |pipeline, shader_gate| {
                 if debug_framebuffer {
-                    let bound_texture =
-                        pipeline.bind_texture(hkt.framebuffer.color_slot());
+                    let bound_texture = pipeline.bind_texture(&twiddles);
                     shader_gate.shade(
                         &framebuffer_debug_shader,
                         |render_gate, iface| {
