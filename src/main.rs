@@ -38,12 +38,6 @@ unsafe impl GraphicsContext for SdlContext {
     }
 }
 
-impl Drop for SdlContext {
-    fn drop(&mut self) {
-        eprintln!("Dropping OpenGL context.");
-    }
-}
-
 uniform_interface! {
     struct ShaderInterface {
         view_projection: luminance::linear::M44
@@ -107,7 +101,7 @@ mod debug_shader {
 fn main() {
     let sdl = sdl2::init().expect("Could not init sdl2");
 
-    let mut graphics_context = {
+    let context = {
         let video_system =
             sdl.video().expect("Could not initialize video system");
         sdl.mouse().set_relative_mouse_mode(true);
@@ -126,14 +120,14 @@ fn main() {
         let state = GraphicsState::new()
             .expect("Only one graphics state per thread allowed");
 
-        SdlContext {
+        &mut SdlContext {
             _gl_context,
             window,
             state: Rc::new(RefCell::new(state)),
         }
     };
 
-    let (width, height) = graphics_context.window.size();
+    let (width, height) = context.window.size();
 
     type Position = [f32; 3];
     type RGB = [f32; 3];
@@ -152,13 +146,13 @@ fn main() {
 
     let ocean_shader = ocean::shader();
 
-    let h0k = fft::H0k::new(&mut graphics_context);
+    let h0k = fft::H0k::new(context);
     let h0k_texture = {
-        let builder = graphics_context.pipeline_builder();
-        h0k.render(&mut graphics_context, &builder)
+        let builder = context.pipeline_builder();
+        h0k.render(context, &builder)
     };
 
-    let hkt = fft::Hkt::new(&mut graphics_context);
+    let hkt = fft::Hkt::new(context);
 
     let mut event_pump = sdl.event_pump().unwrap();
     let mut back_buffer = Framebuffer::back_buffer([width, height]);
@@ -178,12 +172,7 @@ fn main() {
             3, 4, 5, // second triangle
         ];
 
-        Tess::new(
-            &mut graphics_context,
-            Mode::Triangle,
-            &vertices[..],
-            &indices[..],
-        )
+        Tess::new(context, Mode::Triangle, &vertices[..], &indices[..])
     };
 
     let mut camera =
@@ -202,7 +191,7 @@ fn main() {
         .finalise()
         .unwrap();
 
-    let ocean = ocean::Ocean::new(&mut graphics_context);
+    let ocean = ocean::Ocean::new(context);
     entities
         .new_entity()
         .with(ocean)
@@ -210,11 +199,11 @@ fn main() {
         .finalise()
         .unwrap();
 
-    let fft = fft::Fft::new(&mut graphics_context);
+    let fft = fft::Fft::new(context);
 
-    let twids = fft::twiddle_indices(&mut graphics_context);
+    let twids = fft::twiddle_indices(context);
 
-    let debugger = debug_shader::Debugger::new(&mut graphics_context);
+    let debugger = debug_shader::Debugger::new(context);
 
     use std::time::Instant;
     let start = Instant::now();
@@ -265,14 +254,14 @@ fn main() {
             .take_input(&event_pump, delta_t.as_micros() as f32 / 1_000_000.0);
 
         use luminance::render_state::RenderState;
-        let builder = graphics_context.pipeline_builder();
+        let builder = context.pipeline_builder();
 
         let duration = current_frame_start - start;
         let f_time = duration.as_secs() as f32
             + duration.subsec_nanos() as f32 / 1_000_000_000.0;
-        let hkt_texture = hkt.render(&mut graphics_context, &builder, f_time, h0k_texture);
+        let hkt_texture = hkt.render(context, &builder, f_time, h0k_texture);
 
-        let heightmap = fft.render(&mut graphics_context, &builder, hkt_texture);
+        let heightmap = fft.render(context, &builder, hkt_texture);
 
         builder.pipeline(
             &back_buffer,
@@ -297,7 +286,7 @@ fn main() {
                                     RenderState::default(),
                                     |tess_gate| {
                                         tess_gate.render(
-                                            &mut graphics_context,
+                                            context,
                                             (&debugger.tess).into(),
                                         );
                                     },
@@ -322,10 +311,7 @@ fn main() {
                                     for component in components.get() {
                                         let (_id, Primitive { tess }) =
                                             component;
-                                        tess_gate.render(
-                                            &mut graphics_context,
-                                            tess.into(),
-                                        );
+                                        tess_gate.render(context, tess.into());
                                     }
                                 },
                             )
@@ -352,7 +338,7 @@ fn main() {
                                                     x as f32, y as f32,
                                                 ]);
                                                 tess_gate.render(
-                                                    &mut graphics_context,
+                                                    context,
                                                     tess.into(),
                                                 );
                                             }
@@ -366,9 +352,7 @@ fn main() {
             },
         );
 
-        graphics_context.swap_buffers();
+        context.swap_buffers();
         previous_frame_start = current_frame_start;
     }
-
-    std::mem::forget(graphics_context);
 }

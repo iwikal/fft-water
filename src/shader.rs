@@ -8,7 +8,7 @@ where
     let (shader, warnings) = Program::from_strings(None, vert, None, frag)
         .unwrap_or_else(|error| {
             eprintln!("{}", error);
-            std::process::exit(1);
+            panic!();
         });
 
     for warning in warnings {
