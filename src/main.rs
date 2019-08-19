@@ -208,7 +208,7 @@ fn main() {
     use std::time::Instant;
     let start = Instant::now();
     let mut previous_frame_start = start;
-    let mut debug_framebuffer = true;
+    let mut debug_framebuffer = false;
     'app: loop {
         let current_frame_start = Instant::now();
         let delta_t = current_frame_start - previous_frame_start;
@@ -322,7 +322,8 @@ fn main() {
                         |render_gate, uniform_interface| {
                             uniform_interface
                                 .set_view_projection(view_projection.into());
-
+                            let heightmap = pipeline.bind_texture(heightmap);
+                            uniform_interface.set_heightmap(&heightmap);
                             render_gate.render(
                                 RenderState::default(),
                                 |tess_gate| {

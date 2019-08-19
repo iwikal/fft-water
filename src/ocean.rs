@@ -1,12 +1,16 @@
 use luminance::{
     context::GraphicsContext,
     linear::M44,
+    pipeline::BoundTexture,
+    pixel::RGBA32F,
     shader::program::Program,
     tess::{Mode, Tess},
+    texture::{Dim2, Flat},
 };
 
 uniform_interface! {
     pub struct ShaderInterface {
+        heightmap: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
         view_projection: M44,
         offset: [f32; 2]
     }
@@ -19,6 +23,10 @@ impl ShaderInterface {
 
     pub fn set_offset(&self, value: [f32; 2]) {
         self.offset.update(value);
+    }
+
+    pub fn set_heightmap(&self, value: &BoundTexture<Flat, Dim2, RGBA32F>) {
+        self.heightmap.update(value);
     }
 }
 
@@ -51,7 +59,7 @@ pub fn shader() -> OceanShader {
 impl Ocean {
     pub fn new(graphics_context: &mut impl GraphicsContext) -> Self {
         let tess = {
-            let side = 64;
+            let side: usize = 1 << 8;
             let n_lines = side + 1;
             let vertices = {
                 let mut vertices = Vec::with_capacity(n_lines * n_lines);
@@ -60,9 +68,7 @@ impl Ocean {
                         let x = x as f32;
                         let z = z as f32;
                         let side = side as f32;
-                        let phase = x * std::f32::consts::PI * 2.0 / side;
-                        let y = phase.sin() / 2.0 + 0.5;
-                        vertices.push([x / side, y, z / side]);
+                        vertices.push([x / side, 0.0, z / side]);
                     }
                 }
                 vertices
