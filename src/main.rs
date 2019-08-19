@@ -6,11 +6,8 @@ use gl;
 use luminance::{
     context::GraphicsContext,
     framebuffer::Framebuffer,
-    pipeline::BoundTexture,
-    pixel::RGBA32F,
     state::GraphicsState,
     tess::{Mode, Tess},
-    texture::{Dim2, Flat},
 };
 use sdl2;
 use std::cell::RefCell;
@@ -55,6 +52,57 @@ uniform_interface! {
 
 const SHADER_VS: &str = include_str!("../shaders/example.vert");
 const SHADER_FS: &str = include_str!("../shaders/example.frag");
+
+mod debug_shader {
+    use luminance::{
+        context::GraphicsContext,
+        linear::M44,
+        pipeline::BoundTexture,
+        pixel::RGBA32F,
+        shader::program::Program,
+        tess::{Mode, Tess},
+        texture::{Dim2, Flat},
+    };
+
+    uniform_interface! {
+        pub struct DebugShaderInterface {
+            input_texture: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
+            view_projection: M44,
+            model: M44
+        }
+    }
+
+    impl DebugShaderInterface {
+        pub fn set_texture(&self, t: &BoundTexture<'_, Flat, Dim2, RGBA32F>) {
+            self.input_texture.update(t);
+        }
+
+        pub fn set_model(&self, m: impl Into<M44>) {
+            self.model.update(m.into());
+        }
+
+        pub fn set_view_projection(&self, vp: impl Into<M44>) {
+            self.view_projection.update(vp.into());
+        }
+    }
+
+    pub struct Debugger {
+        pub shader: Program<(), (), DebugShaderInterface>,
+        pub tess: Tess<()>,
+    }
+
+    impl Debugger {
+        pub fn new(context: &mut impl GraphicsContext) -> Self {
+            let shader = crate::shader::from_strings(
+                include_str!("../shaders/framebuffer-debug.vert"),
+                include_str!("../shaders/framebuffer-debug.frag"),
+            );
+            let tess = Tess::attributeless(context, Mode::TriangleStrip, 4);
+
+            Self { shader, tess }
+        }
+    }
+}
 
 fn main() {
     let sdl = sdl2::init().expect("Could not init sdl2");
@@ -105,29 +153,12 @@ fn main() {
     let ocean_shader = ocean::shader();
 
     let h0k = fft::H0k::new(&mut graphics_context);
-    {
+    let h0k_texture = {
         let builder = graphics_context.pipeline_builder();
-        h0k.render(&mut graphics_context, &builder);
-    }
+        h0k.render(&mut graphics_context, &builder)
+    };
 
     let hkt = fft::Hkt::new(&mut graphics_context);
-
-    uniform_interface! {
-        struct DebugShaderInterface {
-            input_texture: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>
-        }
-    }
-
-    let (framebuffer_debug_shader, _) =
-        Program::<(), (), DebugShaderInterface>::from_strings(
-            None,
-            include_str!("../shaders/quad.vert"),
-            None,
-            include_str!("../shaders/framebuffer-debug.frag"),
-        )
-        .unwrap();
-    let quad =
-        Tess::attributeless(&mut graphics_context, Mode::TriangleStrip, 4);
 
     let mut event_pump = sdl.event_pump().unwrap();
     let mut back_buffer = Framebuffer::back_buffer([width, height]);
@@ -179,7 +210,11 @@ fn main() {
         .finalise()
         .unwrap();
 
-    let twiddles = fft::twiddle_indices(&mut graphics_context);
+    let fft = fft::Fft::new(&mut graphics_context);
+
+    let twids = fft::twiddle_indices(&mut graphics_context);
+
+    let debugger = debug_shader::Debugger::new(&mut graphics_context);
 
     use std::time::Instant;
     let start = Instant::now();
@@ -235,36 +270,42 @@ fn main() {
         let duration = current_frame_start - start;
         let f_time = duration.as_secs() as f32
             + duration.subsec_nanos() as f32 / 1_000_000_000.0;
-        hkt.render(
-            &mut graphics_context,
-            &builder,
-            f_time,
-            &h0k.framebuffer.color_slot(),
-        );
+        let hkt_texture = hkt.render(&mut graphics_context, &builder, f_time, h0k_texture);
+
+        let heightmap = fft.render(&mut graphics_context, &builder, hkt_texture);
 
         builder.pipeline(
             &back_buffer,
-            [0.0, 0.0, 0.0, 0.0],
+            [0.1, 0.2, 0.3, 1.0],
             |pipeline, shader_gate| {
+                let view_projection = camera.projection() * camera.view();
                 if debug_framebuffer {
-                    let bound_texture = pipeline.bind_texture(&twiddles);
                     shader_gate.shade(
-                        &framebuffer_debug_shader,
+                        &debugger.shader,
                         |render_gate, iface| {
-                            iface.input_texture.update(&bound_texture);
-                            render_gate.render(
-                                RenderState::default(),
-                                |tess_gate| {
-                                    tess_gate.render(
-                                        &mut graphics_context,
-                                        (&quad).into(),
-                                    );
-                                },
-                            );
+                            let textures =
+                                [heightmap, &twids, hkt_texture, h0k_texture];
+                            for (i, t) in textures.iter().enumerate() {
+                                iface.set_texture(&pipeline.bind_texture(t));
+                                iface.set_view_projection(view_projection);
+                                let pos = glm::vec3(-1.0, 0.0, 0.0) * i as f32;
+                                let pos = pos - glm::vec3(0.5, 0.5, 0.5);
+                                let model_mat =
+                                    glm::translate(&glm::one(), &pos);
+                                iface.set_model(model_mat);
+                                render_gate.render(
+                                    RenderState::default(),
+                                    |tess_gate| {
+                                        tess_gate.render(
+                                            &mut graphics_context,
+                                            (&debugger.tess).into(),
+                                        );
+                                    },
+                                );
+                            }
                         },
                     );
                 } else {
-                    let view_projection = camera.projection() * camera.view();
                     shader_gate.shade(
                         &triangle_shader,
                         |render_gate, uniform_interface| {

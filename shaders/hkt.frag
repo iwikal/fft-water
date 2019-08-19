@@ -6,8 +6,8 @@ uniform sampler2D input_texture;
 
 out vec4 frag;
 
-uniform	int N = 512;
-uniform int L = 1000;
+uniform int n = 512;
+uniform int scale = 1000;
 uniform float time;
 
 const float g = 9.81;
@@ -21,8 +21,8 @@ vec2 cmul(vec2 c0, vec2 c1) {
 }
 
 void main(void) {
-  vec2 x = (uv - 0.5) * float(N);
-  vec2 k = TAU * x / L;
+  vec2 xy = gl_FragCoord.xy - 0.5 - float(n) / 2.0;
+  vec2 k = TAU * xy / scale;
 
   float magnitude = max(length(k), 0.00001);
 
@@ -50,9 +50,6 @@ void main(void) {
   vec2 dy = vec2(0.0, -k.y / magnitude);
   vec2 h_k_t_dz = cmul(dy, h_k_t_dy);
 
-  // tilde_hkt_dy = vec4(h_k_t_dy.xy, 0.0, 1.0);
-  // tilde_hkt_dx = vec4(h_k_t_dx.xy, 0.0, 1.0);
-  // tilde_hkt_dz = vec4(h_k_t_dz.xy, 0.0, 1.0);
   frag.xy = h_k_t_dy;
   frag.zw = vec2(0.0, 1.0);
 }
