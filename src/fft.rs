@@ -36,7 +36,7 @@ pub struct H0k {
     l: f32, // capillary supress factor
 }
 
-const N: u32 = 1 << 8;
+const N: u32 = 0x100;
 
 impl H0k {
     pub fn new(context: &mut impl GraphicsContext) -> Self {
@@ -243,13 +243,13 @@ uniform_interface! {
 }
 
 type FftTexture = Texture<Flat, Dim2, RGBA32F>;
+pub type FftFramebuffer = Framebuffer<Flat, Dim2, FftTexture, ()>;
 
 pub struct Fft {
     twiddle_indices: TwiddleTexture,
     butterfly_shader: Program<(), (), ButterflyInterface>,
     inversion_shader: Program<(), (), InversionInterface>,
-    framebuffer_a: Framebuffer<Flat, Dim2, FftTexture, ()>,
-    framebuffer_b: Framebuffer<Flat, Dim2, FftTexture, ()>,
+    pingpong_buffer: FftFramebuffer,
     tess: Tess<()>,
 }
 
@@ -269,9 +269,7 @@ impl Fft {
 
         let size = [N, N];
 
-        let framebuffer_a =
-            Framebuffer::new(context, size, 0).expect("framebuffer creation");
-        let framebuffer_b =
+        let pingpong_buffer =
             Framebuffer::new(context, size, 0).expect("framebuffer creation");
 
         let tess = Tess::attributeless(context, Mode::TriangleStrip, 4);
@@ -281,33 +279,34 @@ impl Fft {
             twiddle_indices,
             butterfly_shader,
             inversion_shader,
-            framebuffer_a,
-            framebuffer_b,
+            pingpong_buffer,
         }
     }
 
-    pub fn render(
+    pub fn render<'a>(
         &self,
         context: &mut impl GraphicsContext,
         builder: &Builder,
         input_texture: &FftTexture,
-    ) -> &FftTexture {
+        output_buffer: &'a FftFramebuffer,
+    ) -> &'a FftTexture {
         let Self {
             tess,
-            framebuffer_a,
-            framebuffer_b,
+            pingpong_buffer,
             twiddle_indices,
             butterfly_shader,
             inversion_shader,
         } = self;
 
-        let bits = (N as f32).log2() as u32;
-        let buffers = [framebuffer_a, framebuffer_b];
-        let mut pingpong = 0;
+        let bits = (N as f32).log2() as usize;
+        let buffers = [pingpong_buffer, output_buffer];
+        let mut pingpong = bits % 2;
+        let mut first_round = true;
 
         for &direction in &[0, 1] {
             for stage in 0..bits {
-                let input = if stage == 0 && direction == 0 {
+                let input = if first_round {
+                    first_round = false;
                     input_texture
                 } else {
                     buffers[pingpong].color_slot()
@@ -342,22 +341,30 @@ impl Fft {
                 pingpong = 1 - pingpong;
             }
         }
-        let input = buffers[pingpong].color_slot();
-        let output = buffers[1 - pingpong];
-        builder.pipeline(
-            output,
-            [1.0, 1.0, 0.0, 1.0],
-            |pipeline, shader_gate| {
-                let bound_input = pipeline.bind_texture(input);
-                shader_gate.shade(inversion_shader, |render_gate, iface| {
-                    iface.input_texture.update(&bound_input);
-                    use luminance::render_state::RenderState;
-                    render_gate.render(RenderState::default(), |tess_gate| {
-                        tess_gate.render(context, tess.into());
-                    });
-                });
-            },
-        );
-        output.color_slot()
+        {
+            let input = buffers[pingpong].color_slot();
+            let output = buffers[1 - pingpong];
+            builder.pipeline(
+                output,
+                [1.0, 1.0, 0.0, 1.0],
+                |pipeline, shader_gate| {
+                    let bound_input = pipeline.bind_texture(input);
+                    shader_gate.shade(
+                        inversion_shader,
+                        |render_gate, iface| {
+                            iface.input_texture.update(&bound_input);
+                            use luminance::render_state::RenderState;
+                            render_gate.render(
+                                RenderState::default(),
+                                |tess_gate| {
+                                    tess_gate.render(context, tess.into());
+                                },
+                            );
+                        },
+                    );
+                },
+            );
+        }
+        output_buffer.color_slot()
     }
 }

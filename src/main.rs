@@ -199,6 +199,7 @@ fn main() {
         .finalise()
         .unwrap();
 
+    let heightmap_buffer = Framebuffer::new(context, [0x100, 0x100], 0).unwrap();
     let fft = fft::Fft::new(context);
 
     let twids = fft::twiddle_indices(context);
@@ -261,7 +262,7 @@ fn main() {
             + duration.subsec_nanos() as f32 / 1_000_000_000.0;
         let hkt_texture = hkt.render(context, &builder, f_time, h0k_texture);
 
-        let heightmap = fft.render(context, &builder, hkt_texture);
+        let heightmap = fft.render(context, &builder, hkt_texture, &heightmap_buffer);
 
         builder.pipeline(
             &back_buffer,
