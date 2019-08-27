@@ -10,14 +10,14 @@ use luminance::{
 };
 
 uniform_interface! {
-    pub struct ShaderInterface {
+    pub struct OceanShaderInterface {
         heightmap: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
         view_projection: M44,
         offset: [f32; 2]
     }
 }
 
-impl ShaderInterface {
+impl OceanShaderInterface {
     pub fn set_view_projection(&self, value: M44) {
         self.view_projection.update(value);
     }
@@ -31,7 +31,8 @@ impl ShaderInterface {
     }
 }
 
-type Vertex = [f32; 3];
+type OceanVertex = [f32; 3];
+type OceanShader = Program<OceanVertex, (), OceanShaderInterface>;
 
 use crate::fft::{Fft, FftFramebuffer, H0k, Hkt};
 pub struct Ocean {
@@ -40,27 +41,7 @@ pub struct Ocean {
     pub fft: Fft,
     pub heightmap_buffer: FftFramebuffer,
     shader: OceanShader,
-    tess: Tess<Vertex>,
-}
-
-type OceanShader = Program<Vertex, (), ShaderInterface>;
-pub fn shader() -> OceanShader {
-    let (shader, warnings) = OceanShader::from_strings(
-        None,
-        include_str!("../shaders/ocean.vert"),
-        None,
-        include_str!("../shaders/ocean.frag"),
-    )
-    .unwrap_or_else(|error| {
-        eprintln!("{}", error);
-        panic!("Can't go on without this shader");
-    });
-
-    for warning in warnings {
-        eprintln!("{:#?}", warning);
-    }
-
-    shader
+    tess: Tess<OceanVertex>,
 }
 
 impl Ocean {
@@ -74,7 +55,10 @@ impl Ocean {
         let fft = Fft::new(context);
         let heightmap_buffer = FftFramebuffer::new(context, [0x100, 0x100], 0)
             .expect("framebuffer creation");
-        let shader = shader();
+        let shader = crate::shader::from_strings(
+            include_str!("../shaders/ocean.vert"),
+            include_str!("../shaders/ocean.frag"),
+        );
         let tess = {
             let side: usize = 0x100;
             let n_lines = side + 1;
@@ -125,11 +109,11 @@ impl Ocean {
     }
 
     pub fn simulate(
-        &self,
+        &mut self,
         context: &mut impl GraphicsContext,
         builder: &Builder,
         time: f32,
-    ) {
+    ) -> OceanFrame {
         let Self {
             h0k,
             hkt,
@@ -144,8 +128,13 @@ impl Ocean {
             hkt.framebuffer.color_slot(),
             heightmap_buffer,
         );
+        OceanFrame(self)
     }
+}
 
+pub struct OceanFrame<'a>(&'a Ocean);
+
+impl<'a> OceanFrame<'a> {
     pub fn render(
         &self,
         context: &mut impl GraphicsContext,
@@ -153,12 +142,12 @@ impl Ocean {
         shader_gate: &ShadingGate,
         view_projection: impl Into<M44>,
     ) {
-        let Self {
+        let Self(Ocean {
             heightmap_buffer,
             shader,
             tess,
             ..
-        } = self;
+        }) = self;
 
         let heightmap = pipeline.bind_texture(heightmap_buffer.color_slot());
         shader_gate.shade(shader, |render_gate, iface| {

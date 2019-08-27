@@ -131,7 +131,7 @@ fn main() {
         .finalise()
         .unwrap();
 
-    let ocean = ocean::Ocean::new(context);
+    let mut ocean = ocean::Ocean::new(context);
 
     use std::time::Instant;
     let start = Instant::now();
@@ -178,7 +178,7 @@ fn main() {
         let f_time = duration.as_secs() as f32
             + duration.subsec_nanos() as f32 / 1_000_000_000.0;
 
-        ocean.simulate(context, &builder, f_time);
+        let ocean_frame = ocean.simulate(context, &builder, f_time);
 
         builder.pipeline(
             &back_buffer,
@@ -206,7 +206,12 @@ fn main() {
                         )
                     },
                 );
-                ocean.render(context, &pipeline, &shader_gate, view_projection);
+                ocean_frame.render(
+                    context,
+                    &pipeline,
+                    &shader_gate,
+                    view_projection,
+                );
             },
         );
 

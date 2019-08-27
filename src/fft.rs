@@ -288,7 +288,7 @@ impl Fft {
         context: &mut impl GraphicsContext,
         builder: &Builder,
         input_texture: &FftTexture,
-        output_buffer: &'a FftFramebuffer,
+        output_buffer: &'a mut FftFramebuffer,
     ) -> &'a FftTexture {
         let Self {
             tess,
