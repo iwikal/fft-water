@@ -149,20 +149,14 @@ fn main() {
                 }
                 Event::KeyDown { scancode, .. } => {
                     use sdl2::keyboard::Scancode::*;
-                    match scancode {
-                        Some(Escape) => {
-                            break 'app;
-                        }
-                        _ => {}
+                    if let Some(Escape) = scancode {
+                        break 'app;
                     }
                 }
                 Event::Window { win_event, .. } => {
                     use sdl2::event::WindowEvent;
-                    match win_event {
-                        WindowEvent::SizeChanged(width, height) => {
-                            resize = Some([width, height]);
-                        }
-                        _ => {}
+                    if let WindowEvent::SizeChanged(width, height) = win_event {
+                        resize = Some([width, height]);
                     }
                 }
                 _ => {}

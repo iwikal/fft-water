@@ -8,7 +8,7 @@ use luminance::{
     texture::{Dim2, Flat, Texture},
 };
 
-const QUAD_VS_SRC: &'static str = include_str!("../shaders/quad.vert");
+const QUAD_VS_SRC: &str = include_str!("../shaders/quad.vert");
 
 uniform_interface! {
     struct H0kInterface {

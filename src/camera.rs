@@ -51,22 +51,22 @@ impl Camera {
             };
 
             if is_pressed("W") {
-                move_vector = move_vector + glm::vec3(0., 0., -1.);
+                move_vector += glm::vec3(0., 0., -1.);
             }
             if is_pressed("A") {
-                move_vector = move_vector + glm::vec3(-1., 0., 0.);
+                move_vector += glm::vec3(-1., 0., 0.);
             }
             if is_pressed("S") {
-                move_vector = move_vector + glm::vec3(0., 0., 1.);
+                move_vector += glm::vec3(0., 0., 1.);
             }
             if is_pressed("D") {
-                move_vector = move_vector + glm::vec3(1., 0., 0.);
+                move_vector += glm::vec3(1., 0., 0.);
             }
             if is_pressed("Space") {
-                move_vector = move_vector + glm::vec3(0., 1., 0.);
+                move_vector += glm::vec3(0., 1., 0.);
             }
             if is_pressed("Left Shift") {
-                move_vector = move_vector + glm::vec3(0., -1., 0.);
+                move_vector += glm::vec3(0., -1., 0.);
             }
             let length = glm::length(&move_vector);
             let length = if length > 1.0 { length } else { 1.0 };
@@ -81,9 +81,9 @@ impl Camera {
                 glm::vec3(x * cos + z * -sin, y, z * cos + x * sin)
             };
 
-            move_vector = move_vector * (2.0 * delta_t);
+            move_vector *= 2.0 * delta_t;
 
-            self.position = self.position + move_vector;
+            self.position += move_vector;
         }
     }
 
@@ -92,10 +92,6 @@ impl Camera {
     }
 
     pub fn view(&self) -> glm::Mat4 {
-        let view: glm::Mat4 = glm::identity();
-        let view = view * self.orientation;
-        let view = glm::translate(&view, &-self.position);
-
-        view
+        glm::translate(&self.orientation, &-self.position)
     }
 }
