@@ -15,6 +15,7 @@ use std::rc::Rc;
 use tiny_ecs;
 
 mod camera;
+mod debug;
 mod fft;
 mod ocean;
 mod shader;
@@ -46,57 +47,6 @@ uniform_interface! {
 
 const SHADER_VS: &str = include_str!("../shaders/example.vert");
 const SHADER_FS: &str = include_str!("../shaders/example.frag");
-
-mod debug_shader {
-    use luminance::{
-        context::GraphicsContext,
-        linear::M44,
-        pipeline::BoundTexture,
-        pixel::RGBA32F,
-        shader::program::Program,
-        tess::{Mode, Tess},
-        texture::{Dim2, Flat},
-    };
-
-    uniform_interface! {
-        pub struct DebugShaderInterface {
-            input_texture: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
-            view_projection: M44,
-            model: M44
-        }
-    }
-
-    impl DebugShaderInterface {
-        pub fn set_texture(&self, t: &BoundTexture<'_, Flat, Dim2, RGBA32F>) {
-            self.input_texture.update(t);
-        }
-
-        pub fn set_model(&self, m: impl Into<M44>) {
-            self.model.update(m.into());
-        }
-
-        pub fn set_view_projection(&self, vp: impl Into<M44>) {
-            self.view_projection.update(vp.into());
-        }
-    }
-
-    pub struct Debugger {
-        pub shader: Program<(), (), DebugShaderInterface>,
-        pub tess: Tess<()>,
-    }
-
-    impl Debugger {
-        pub fn new(context: &mut impl GraphicsContext) -> Self {
-            let shader = crate::shader::from_strings(
-                include_str!("../shaders/framebuffer-debug.vert"),
-                include_str!("../shaders/framebuffer-debug.frag"),
-            );
-            let tess = Tess::attributeless(context, Mode::TriangleStrip, 4);
-
-            Self { shader, tess }
-        }
-    }
-}
 
 fn main() {
     let sdl = sdl2::init().expect("Could not init sdl2");
@@ -144,16 +94,6 @@ fn main() {
         eprintln!("{:#?}", warning);
     }
 
-    let ocean_shader = ocean::shader();
-
-    let h0k = fft::H0k::new(context);
-    let h0k_texture = {
-        let builder = context.pipeline_builder();
-        h0k.render(context, &builder)
-    };
-
-    let hkt = fft::Hkt::new(context);
-
     let mut event_pump = sdl.event_pump().unwrap();
     let mut back_buffer = Framebuffer::back_buffer([width, height]);
 
@@ -192,24 +132,10 @@ fn main() {
         .unwrap();
 
     let ocean = ocean::Ocean::new(context);
-    entities
-        .new_entity()
-        .with(ocean)
-        .unwrap()
-        .finalise()
-        .unwrap();
-
-    let heightmap_buffer = Framebuffer::new(context, [0x100, 0x100], 0).unwrap();
-    let fft = fft::Fft::new(context);
-
-    let twids = fft::twiddle_indices(context);
-
-    let debugger = debug_shader::Debugger::new(context);
 
     use std::time::Instant;
     let start = Instant::now();
     let mut previous_frame_start = start;
-    let mut debug_framebuffer = false;
     'app: loop {
         let current_frame_start = Instant::now();
         let delta_t = current_frame_start - previous_frame_start;
@@ -226,9 +152,6 @@ fn main() {
                     match scancode {
                         Some(Escape) => {
                             break 'app;
-                        }
-                        Some(F) => {
-                            debug_framebuffer = !debug_framebuffer;
                         }
                         _ => {}
                     }
@@ -260,97 +183,36 @@ fn main() {
         let duration = current_frame_start - start;
         let f_time = duration.as_secs() as f32
             + duration.subsec_nanos() as f32 / 1_000_000_000.0;
-        let hkt_texture = hkt.render(context, &builder, f_time, h0k_texture);
 
-        let heightmap = fft.render(context, &builder, hkt_texture, &heightmap_buffer);
+        ocean.simulate(context, &builder, f_time);
 
         builder.pipeline(
             &back_buffer,
             [0.1, 0.2, 0.3, 1.0],
             |pipeline, shader_gate| {
                 let view_projection = camera.projection() * camera.view();
-                if debug_framebuffer {
-                    shader_gate.shade(
-                        &debugger.shader,
-                        |render_gate, iface| {
-                            let textures =
-                                [heightmap, &twids, hkt_texture, h0k_texture];
-                            for (i, t) in textures.iter().enumerate() {
-                                iface.set_texture(&pipeline.bind_texture(t));
-                                iface.set_view_projection(view_projection);
-                                let pos = glm::vec3(-1.0, 0.0, 0.0) * i as f32;
-                                let pos = pos - glm::vec3(0.5, 0.5, 0.5);
-                                let model_mat =
-                                    glm::translate(&glm::one(), &pos);
-                                iface.set_model(model_mat);
-                                render_gate.render(
-                                    RenderState::default(),
-                                    |tess_gate| {
-                                        tess_gate.render(
-                                            context,
-                                            (&debugger.tess).into(),
-                                        );
-                                    },
-                                );
-                            }
-                        },
-                    );
-                } else {
-                    shader_gate.shade(
-                        &triangle_shader,
-                        |render_gate, uniform_interface| {
-                            uniform_interface
-                                .view_projection
-                                .update(view_projection.into());
+                shader_gate.shade(
+                    &triangle_shader,
+                    |render_gate, uniform_interface| {
+                        uniform_interface
+                            .view_projection
+                            .update(view_projection.into());
 
-                            render_gate.render(
-                                RenderState::default(),
-                                |tess_gate| {
-                                    let components = entities
-                                        .borrow_mut::<Primitive>()
-                                        .unwrap();
-                                    for component in components.get() {
-                                        let (_id, Primitive { tess }) =
-                                            component;
-                                        tess_gate.render(context, tess.into());
-                                    }
-                                },
-                            )
-                        },
-                    );
-                    shader_gate.shade(
-                        &ocean_shader,
-                        |render_gate, uniform_interface| {
-                            uniform_interface
-                                .set_view_projection(view_projection.into());
-                            let heightmap = pipeline.bind_texture(heightmap);
-                            uniform_interface.set_heightmap(&heightmap);
-                            render_gate.render(
-                                RenderState::default(),
-                                |tess_gate| {
-                                    use ocean::Ocean;
-                                    let components =
-                                        entities.borrow_mut::<Ocean>().unwrap();
-                                    for component in components.get() {
-                                        let (_id, Ocean { tess }) = component;
-                                        let side = 8;
-                                        for x in 0..side {
-                                            for y in 0..side {
-                                                uniform_interface.set_offset([
-                                                    x as f32, y as f32,
-                                                ]);
-                                                tess_gate.render(
-                                                    context,
-                                                    tess.into(),
-                                                );
-                                            }
-                                        }
-                                    }
-                                },
-                            )
-                        },
-                    );
-                }
+                        render_gate.render(
+                            RenderState::default(),
+                            |tess_gate| {
+                                let components =
+                                    entities.borrow_mut::<Primitive>().unwrap();
+                                for (_id, Primitive { tess }) in
+                                    components.get()
+                                {
+                                    tess_gate.render(context, tess.into());
+                                }
+                            },
+                        )
+                    },
+                );
+                ocean.render(context, &pipeline, &shader_gate, view_projection);
             },
         );
 
