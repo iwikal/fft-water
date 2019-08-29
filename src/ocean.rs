@@ -2,19 +2,19 @@ use luminance::{
     context::GraphicsContext,
     linear::M44,
     pipeline::{BoundTexture, Builder, Pipeline, ShadingGate},
-    pixel::RGBA32F,
+    pixel::Floating,
     render_state::RenderState,
-    shader::program::Program,
-    tess::{Mode, Tess},
+    shader::program::{Program, Uniform},
+    tess::{Mode, Tess, TessBuilder},
     texture::{Dim2, Flat},
 };
+use luminance_derive::{Semantics, UniformInterface, Vertex};
 
-uniform_interface! {
-    pub struct OceanShaderInterface {
-        heightmap: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
-        view_projection: M44,
-        offset: [f32; 2]
-    }
+#[derive(UniformInterface)]
+pub struct OceanShaderInterface {
+    heightmap: Uniform<&'static BoundTexture<'static, Flat, Dim2, Floating>>,
+    view_projection: Uniform<M44>,
+    offset: Uniform<[f32; 2]>,
 }
 
 impl OceanShaderInterface {
@@ -26,13 +26,29 @@ impl OceanShaderInterface {
         self.offset.update(value);
     }
 
-    pub fn set_heightmap(&self, value: &BoundTexture<Flat, Dim2, RGBA32F>) {
+    pub fn set_heightmap(&self, value: &BoundTexture<Flat, Dim2, Floating>) {
         self.heightmap.update(value);
     }
 }
 
-type OceanVertex = [f32; 3];
-type OceanShader = Program<OceanVertex, (), OceanShaderInterface>;
+type OceanShader = Program<(), (), OceanShaderInterface>;
+
+#[derive(Clone, Copy, Semantics)]
+pub enum Semantics {
+    #[sem(
+        name = "position",
+        repr = "[f32; 3]",
+        wrapper = "GridVertexPosition"
+    )]
+    Position,
+}
+
+#[repr(C)]
+#[derive(Vertex)]
+#[vertex(sem = "Semantics")]
+struct GridVertex {
+    position: GridVertexPosition,
+}
 
 use crate::fft::{Fft, FftFramebuffer, H0k, Hkt};
 pub struct Ocean {
@@ -41,7 +57,7 @@ pub struct Ocean {
     pub fft: Fft,
     pub heightmap_buffer: FftFramebuffer,
     shader: OceanShader,
-    tess: Tess<OceanVertex>,
+    tess: Tess,
 }
 
 impl Ocean {
@@ -69,7 +85,14 @@ impl Ocean {
                         let x = x as f32;
                         let z = z as f32;
                         let side = side as f32;
-                        vertices.push([x / side, 0.0, z / side]);
+
+                        vertices.push(GridVertex {
+                            position: GridVertexPosition::new([
+                                x / side,
+                                0.0,
+                                z / side,
+                            ]),
+                        });
                     }
                 }
                 vertices
@@ -95,7 +118,12 @@ impl Ocean {
                 indices
             };
 
-            Tess::new(context, Mode::TriangleStrip, &vertices[..], &indices[..])
+            TessBuilder::new(context)
+                .set_mode(Mode::TriangleStrip)
+                .add_vertices(vertices)
+                .set_indices(indices)
+                .build()
+                .unwrap()
         };
 
         Self {

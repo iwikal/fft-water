@@ -1,18 +1,11 @@
 extern crate nalgebra_glm as glm;
-#[macro_use]
-extern crate luminance;
-
 use gl;
 use luminance::{
-    context::GraphicsContext,
-    framebuffer::Framebuffer,
-    state::GraphicsState,
-    tess::{Mode, Tess},
+    context::GraphicsContext, framebuffer::Framebuffer, state::GraphicsState,
 };
 use sdl2;
 use std::cell::RefCell;
 use std::rc::Rc;
-use tiny_ecs;
 
 mod camera;
 mod debug;
@@ -33,20 +26,13 @@ unsafe impl GraphicsContext for SdlContext {
     fn state(&self) -> &Rc<RefCell<GraphicsState>> {
         &self.state
     }
+}
 
+impl SdlContext {
     fn swap_buffers(&mut self) {
         self.window.gl_swap_window();
     }
 }
-
-uniform_interface! {
-    struct ShaderInterface {
-        view_projection: luminance::linear::M44
-    }
-}
-
-const SHADER_VS: &str = include_str!("../shaders/example.vert");
-const SHADER_FS: &str = include_str!("../shaders/example.frag");
 
 fn main() {
     let sdl = sdl2::init().expect("Could not init sdl2");
@@ -79,57 +65,11 @@ fn main() {
 
     let (width, height) = context.window.size();
 
-    type Position = [f32; 3];
-    type RGB = [f32; 3];
-    type Vertex = (Position, RGB);
-
-    use luminance::shader::program::Program;
-    let (triangle_shader, warnings) =
-        Program::<Vertex, (), ShaderInterface>::from_strings(
-            None, SHADER_VS, None, SHADER_FS,
-        )
-        .unwrap();
-
-    for warning in warnings {
-        eprintln!("{:#?}", warning);
-    }
-
     let mut event_pump = sdl.event_pump().unwrap();
     let mut back_buffer = Framebuffer::back_buffer([width, height]);
 
-    let triangles = {
-        let vertices = [
-            ([0.5, -0.5, -1.0], [0.0, 1.0, 0.0]),
-            ([0.0, 0.5, -1.0], [0.0, 0.0, 1.0]),
-            ([-0.5, -0.5, -1.0], [1.0, 0.0, 0.0]),
-            ([0.5, 0.5, -1.0], [0.0, 1.0, 0.0]),
-            ([0.0, -0.5, -1.0], [0.0, 0.0, 1.0]),
-            ([-0.5, 0.5, -1.0], [1.0, 0.0, 0.0]),
-        ];
-
-        let indices = [
-            0, 1, 2, // first triangle
-            3, 4, 5, // second triangle
-        ];
-
-        Tess::new(context, Mode::Triangle, &vertices[..], &indices[..])
-    };
-
     let mut camera =
         camera::Camera::persp(width as f32 / height as f32, 0.9, 0.1, 100.0);
-
-    let mut entities = tiny_ecs::Entities::new(Some(64), Some(24));
-
-    struct Primitive {
-        tess: Tess<Vertex>,
-    }
-
-    entities
-        .new_entity()
-        .with(Primitive { tess: triangles })
-        .unwrap()
-        .finalise()
-        .unwrap();
 
     let mut ocean = ocean::Ocean::new(context);
 
@@ -171,7 +111,6 @@ fn main() {
         camera
             .take_input(&event_pump, delta_t.as_micros() as f32 / 1_000_000.0);
 
-        use luminance::render_state::RenderState;
         let builder = context.pipeline_builder();
 
         let duration = current_frame_start - start;
@@ -185,27 +124,6 @@ fn main() {
             [0.1, 0.2, 0.3, 1.0],
             |pipeline, shader_gate| {
                 let view_projection = camera.projection() * camera.view();
-                shader_gate.shade(
-                    &triangle_shader,
-                    |render_gate, uniform_interface| {
-                        uniform_interface
-                            .view_projection
-                            .update(view_projection.into());
-
-                        render_gate.render(
-                            RenderState::default(),
-                            |tess_gate| {
-                                let components =
-                                    entities.borrow_mut::<Primitive>().unwrap();
-                                for (_id, Primitive { tess }) in
-                                    components.get()
-                                {
-                                    tess_gate.render(context, tess.into());
-                                }
-                            },
-                        )
-                    },
-                );
                 ocean_frame.render(
                     context,
                     &pipeline,

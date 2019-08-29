@@ -1,9 +1,9 @@
 use luminance::shader::program::Program;
 
-pub fn from_strings<A, B, C>(vert: &str, frag: &str) -> Program<A, B, C>
+pub fn from_strings<S, Out, Uni>(vert: &str, frag: &str) -> Program<S, Out, Uni>
 where
-    A: luminance::vertex::Vertex,
-    C: luminance::shader::program::UniformInterface,
+    S: luminance::vertex::Semantics,
+    Uni: luminance::shader::program::UniformInterface,
 {
     let (shader, warnings) = Program::from_strings(None, vert, None, frag)
         .unwrap_or_else(|error| {

@@ -2,33 +2,34 @@ use luminance::{
     context::GraphicsContext,
     framebuffer::Framebuffer,
     pipeline::{BoundTexture, Builder},
-    pixel::RGBA32F,
-    shader::program::Program,
-    tess::{Mode, Tess},
-    texture::{Dim2, Flat, Texture},
+    pixel::{Floating, RGBA32F},
+    shader::program::{Program, Uniform},
+    tess::{Mode, Tess, TessBuilder},
+    texture::{Dim2, Flat, GenMipmaps, Texture},
 };
+use luminance_derive::UniformInterface;
 
 const QUAD_VS_SRC: &str = include_str!("../shaders/quad.vert");
 
-uniform_interface! {
-    struct H0kInterface {
-        input_texture: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
-        n: i32,
-        scale: i32,
-        amplitude: f32,
-        intensity: f32, // wind speed
-        direction: [f32; 2],
-        l: f32 // capillary supress factor
-    }
+#[derive(UniformInterface)]
+struct H0kInterface {
+    input_texture:
+        Uniform<&'static BoundTexture<'static, Flat, Dim2, Floating>>,
+    n: Uniform<i32>,
+    scale: Uniform<i32>,
+    amplitude: Uniform<f32>,
+    intensity: Uniform<f32>, // wind speed
+    direction: Uniform<[f32; 2]>,
+    l: Uniform<f32>, // capillary supress factor
 }
 
 type H0kTexture = Texture<Flat, Dim2, RGBA32F>;
 
 pub struct H0k {
-    tess: Tess<()>,
+    tess: Tess,
     input_texture: Texture<Flat, Dim2, RGBA32F>,
     shader: Program<(), (), H0kInterface>,
-    pub framebuffer: Framebuffer<Flat, Dim2, H0kTexture, ()>,
+    pub framebuffer: Framebuffer<Flat, Dim2, RGBA32F, ()>,
     scale: i32,
     amplitude: f32,
     intensity: f32, // wind speed
@@ -63,10 +64,15 @@ impl H0k {
                 pixels.push(rng.gen());
             }
 
-            input_texture.upload(false, &pixels);
+            input_texture.upload(GenMipmaps::No, &pixels);
         }
 
-        let tess = Tess::attributeless(context, Mode::TriangleStrip, 4);
+        let tess = TessBuilder::new(context)
+            .set_mode(Mode::TriangleStrip)
+            .set_vertex_nb(4)
+            .build()
+            .unwrap();
+
         Self {
             tess,
             input_texture,
@@ -109,20 +115,20 @@ impl H0k {
     }
 }
 
-uniform_interface! {
-    struct HktInterface {
-        input_texture: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
-        n: i32,
-        time: f32
-    }
+#[derive(UniformInterface)]
+struct HktInterface {
+    input_texture:
+        Uniform<&'static BoundTexture<'static, Flat, Dim2, Floating>>,
+    n: Uniform<i32>,
+    time: Uniform<f32>,
 }
 
 type HktTexture = Texture<Flat, Dim2, RGBA32F>;
 
 pub struct Hkt {
-    tess: Tess<()>,
+    tess: Tess,
     shader: Program<(), (), HktInterface>,
-    pub framebuffer: Framebuffer<Flat, Dim2, HktTexture, ()>,
+    pub framebuffer: Framebuffer<Flat, Dim2, RGBA32F, ()>,
 }
 
 impl Hkt {
@@ -140,7 +146,12 @@ impl Hkt {
         sampler.mag_filter = MagFilter::Nearest;
         sampler.min_filter = MinFilter::Nearest;
 
-        let tess = Tess::attributeless(context, Mode::TriangleStrip, 4);
+        let tess = TessBuilder::new(context)
+            .set_mode(Mode::TriangleStrip)
+            .set_vertex_nb(4)
+            .build()
+            .unwrap();
+
         Self {
             tess,
             shader,
@@ -221,36 +232,37 @@ pub fn twiddle_indices(context: &mut impl GraphicsContext) -> TwiddleTexture {
             }
         }
 
-        texture.upload(false, &pixels);
+        texture.upload(GenMipmaps::No, &pixels);
     }
 
     texture
 }
 
-uniform_interface! {
-    struct ButterflyInterface {
-        twiddle_indices: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
-        input_texture: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
-        stage: i32,
-        direction: i32
-    }
+#[derive(UniformInterface)]
+struct ButterflyInterface {
+    twiddle_indices:
+        Uniform<&'static BoundTexture<'static, Flat, Dim2, Floating>>,
+    input_texture:
+        Uniform<&'static BoundTexture<'static, Flat, Dim2, Floating>>,
+    stage: Uniform<i32>,
+    direction: Uniform<i32>,
 }
 
-uniform_interface! {
-    struct InversionInterface {
-        input_texture: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>
-    }
+#[derive(UniformInterface)]
+struct InversionInterface {
+    input_texture:
+        Uniform<&'static BoundTexture<'static, Flat, Dim2, Floating>>,
 }
 
 type FftTexture = Texture<Flat, Dim2, RGBA32F>;
-pub type FftFramebuffer = Framebuffer<Flat, Dim2, FftTexture, ()>;
+pub type FftFramebuffer = Framebuffer<Flat, Dim2, RGBA32F, ()>;
 
 pub struct Fft {
     twiddle_indices: TwiddleTexture,
     butterfly_shader: Program<(), (), ButterflyInterface>,
     inversion_shader: Program<(), (), InversionInterface>,
     pingpong_buffer: FftFramebuffer,
-    tess: Tess<()>,
+    tess: Tess,
 }
 
 impl Fft {
@@ -272,7 +284,11 @@ impl Fft {
         let pingpong_buffer =
             Framebuffer::new(context, size, 0).expect("framebuffer creation");
 
-        let tess = Tess::attributeless(context, Mode::TriangleStrip, 4);
+        let tess = TessBuilder::new(context)
+            .set_mode(Mode::TriangleStrip)
+            .set_vertex_nb(4)
+            .build()
+            .unwrap();
 
         Self {
             tess,

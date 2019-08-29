@@ -3,22 +3,23 @@ use luminance::{
     context::GraphicsContext,
     linear::M44,
     pipeline::BoundTexture,
-    pixel::RGBA32F,
-    shader::program::Program,
-    tess::{Mode, Tess},
+    pixel::Floating,
+    shader::program::{Program, Uniform},
+    tess::{Mode, Tess, TessBuilder},
     texture::{Dim2, Flat},
 };
+use luminance_derive::UniformInterface;
 
-uniform_interface! {
-    pub struct DebugShaderInterface {
-        input_texture: &'static BoundTexture<'static, Flat, Dim2, RGBA32F>,
-        view_projection: M44,
-        model: M44
-    }
+#[derive(UniformInterface)]
+pub struct DebugShaderInterface {
+    input_texture:
+        Uniform<&'static BoundTexture<'static, Flat, Dim2, Floating>>,
+    view_projection: Uniform<M44>,
+    model: Uniform<M44>,
 }
 
 impl DebugShaderInterface {
-    pub fn set_texture(&self, t: &BoundTexture<'_, Flat, Dim2, RGBA32F>) {
+    pub fn set_texture(&self, t: &BoundTexture<'_, Flat, Dim2, Floating>) {
         self.input_texture.update(t);
     }
 
@@ -33,7 +34,7 @@ impl DebugShaderInterface {
 
 pub struct Debugger {
     pub shader: Program<(), (), DebugShaderInterface>,
-    pub tess: Tess<()>,
+    pub tess: Tess,
 }
 
 impl Debugger {
@@ -42,7 +43,12 @@ impl Debugger {
             include_str!("../shaders/framebuffer-debug.vert"),
             include_str!("../shaders/framebuffer-debug.frag"),
         );
-        let tess = Tess::attributeless(context, Mode::TriangleStrip, 4);
+
+        let tess = TessBuilder::new(context)
+            .set_mode(Mode::TriangleStrip)
+            .set_vertex_nb(4)
+            .build()
+            .unwrap();
 
         Self { shader, tess }
     }
