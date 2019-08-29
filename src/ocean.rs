@@ -154,8 +154,12 @@ impl<'a> OceanFrame<'a> {
             iface.set_view_projection(view_projection.into());
             iface.set_heightmap(&heightmap);
             render_gate.render(RenderState::default(), |tess_gate| {
-                iface.set_offset([0.0, 0.0]);
-                tess_gate.render(context, tess.into());
+                for x in -1..1 {
+                    for y in -1..1 {
+                        iface.set_offset([x as f32, y as f32]);
+                        tess_gate.render(context, tess.into());
+                    }
+                }
             });
         })
     }
