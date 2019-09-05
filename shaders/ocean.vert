@@ -1,17 +1,18 @@
-layout (location = 0) in vec3 a_position;
-
 out float height;
 
 uniform sampler2D heightmap;
 uniform mat4 view_projection;
 uniform vec2 offset;
 
+const int N = 256;
+
 void main() {
   vec2 size = textureSize(heightmap, 0);
-  vec3 position = vec3(a_position.x + offset.x, 0.0, a_position.z + offset.y);
-  vec2 uv = vec2(a_position.x, a_position.z);
+  int line_count = N + 1;
+  int x = gl_VertexID / line_count;
+  int y = gl_VertexID % line_count;
+  vec2 position = vec2(x, y) + offset * N;
+  vec2 uv = position / N;
   height = texture(heightmap, mod(uv, 1)).r;
-  position *= 256;
-  position.y = height;
-  gl_Position = view_projection * vec4(position, 1.0);
+  gl_Position = view_projection * vec4(position.x, height, position.y, 1.0);
 }

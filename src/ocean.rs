@@ -8,7 +8,7 @@ use luminance::{
     tess::{Mode, Tess, TessBuilder},
     texture::{Dim2, Flat},
 };
-use luminance_derive::{Semantics, UniformInterface, Vertex};
+use luminance_derive::UniformInterface;
 
 #[derive(UniformInterface)]
 pub struct OceanShaderInterface {
@@ -32,23 +32,6 @@ impl OceanShaderInterface {
 }
 
 type OceanShader = Program<(), (), OceanShaderInterface>;
-
-#[derive(Clone, Copy, Semantics)]
-pub enum Semantics {
-    #[sem(
-        name = "position",
-        repr = "[f32; 3]",
-        wrapper = "GridVertexPosition"
-    )]
-    Position,
-}
-
-#[repr(C)]
-#[derive(Vertex)]
-#[vertex(sem = "Semantics")]
-struct GridVertex {
-    position: GridVertexPosition,
-}
 
 use crate::fft::{Fft, FftFramebuffer, H0k, Hkt};
 pub struct Ocean {
@@ -77,41 +60,21 @@ impl Ocean {
         );
         let tess = {
             let side: usize = 0x100;
-            let n_lines = side + 1;
-            let vertices = {
-                let mut vertices = Vec::with_capacity(n_lines * n_lines);
-                for x in 0..n_lines {
-                    for z in 0..n_lines {
-                        let x = x as f32;
-                        let z = z as f32;
-                        let side = side as f32;
+            let line_count = side + 1;
 
-                        vertices.push(GridVertex {
-                            position: GridVertexPosition::new([
-                                x / side,
-                                0.0,
-                                z / side,
-                            ]),
-                        });
-                    }
-                }
-                vertices
-            };
-
+            let restart = u32::max_value();
             let indices = {
                 let mut indices =
-                    Vec::with_capacity(side * (n_lines * 2 + 3) - 3);
+                    Vec::with_capacity(side * (line_count * 2 + 1) - 1);
                 let side = side as u32;
-                let n_lines = n_lines as u32;
+                let line_count = line_count as u32;
                 for x in 0..side {
                     if x != 0 {
-                        indices.push(x * n_lines + side);
-                        indices.push(x * n_lines);
-                        indices.push(x * n_lines);
+                        indices.push(restart);
                     }
-                    for y in 0..n_lines {
-                        indices.push(x * n_lines + y);
-                        indices.push(x * n_lines + y + n_lines);
+                    for y in 0..line_count {
+                        indices.push(x * line_count + y);
+                        indices.push(x * line_count + y + line_count);
                     }
                 }
                 assert_eq!(indices.len(), indices.capacity());
@@ -120,7 +83,8 @@ impl Ocean {
 
             TessBuilder::new(context)
                 .set_mode(Mode::TriangleStrip)
-                .add_vertices(vertices)
+                .set_primitive_restart_index(Some(restart))
+                .set_vertex_nb(indices.len())
                 .set_indices(indices)
                 .build()
                 .unwrap()
