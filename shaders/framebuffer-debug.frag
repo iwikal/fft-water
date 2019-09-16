@@ -4,9 +4,9 @@ out vec4 frag;
 
 uniform sampler2D input_texture;
 
-vec4 get_pixel(sampler2D input_texture, ivec2 uv) {
-  vec2 size = textureSize(input_texture, 0);
-  return texture(input_texture, (uv + 0.5) / size);
+vec4 get_pixel(sampler2D sampler, ivec2 uv) {
+  vec2 size = textureSize(sampler, 0);
+  return texture(sampler, (uv + 0.5) / size);
 }
 
 void main() {

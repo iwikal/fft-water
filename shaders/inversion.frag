@@ -5,11 +5,6 @@ uniform int n = 512;
 
 out vec4 frag;
 
-vec4 get_pixel(sampler2D input_texture, ivec2 xy) {
-  vec2 size = textureSize(input_texture, 0);
-  return texture(input_texture, (xy + 0.5) / size);
-}
-
 void main() {
   vec2 xy = gl_FragCoord.xy - 0.5;
 
