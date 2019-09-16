@@ -21,36 +21,22 @@ vec4 get_pixel(sampler2D sampler, ivec2 uv) {
   return texture(sampler, (uv + 0.5) / size);
 }
 
-void horizontalButterflies() {
-  vec2 xy = gl_FragCoord.xy - 0.5;
+vec2 get_input_pixel(ivec2 uv) {
+  if (direction != 0) uv = uv.yx; // Flip coordinates
+  return get_pixel(input_texture, uv).rg;
+}
 
-  vec4 data = get_pixel(twiddle_indices, ivec2(stage, xy.x)).rgba;
-  vec2 p = get_pixel(input_texture, ivec2(data.z, xy.y)).rg;
-  vec2 q = get_pixel(input_texture, ivec2(data.w, xy.y)).rg;
-  vec2 w = vec2(data.x, data.y);
+void main() {
+  vec2 frag_coord = gl_FragCoord.xy - 0.5;
+  if (direction != 0) frag_coord = frag_coord.yx; // Flip coordinates
+
+  vec4 twiddle = get_pixel(twiddle_indices, ivec2(stage, frag_coord.x)).rgba;
+  vec2 w = vec2(twiddle.x, twiddle.y);
+  vec2 p = get_input_pixel(ivec2(twiddle.z, frag_coord.y));
+  vec2 q = get_input_pixel(ivec2(twiddle.w, frag_coord.y));
 
   //Butterfly operation
   vec2 H = p + cmul(w, q);
 
   frag = vec4(H, 0, 1);
-}
-
-void verticalButterflies() {
-  vec2 xy = gl_FragCoord.xy - 0.5;
-
-  vec4 data = get_pixel(twiddle_indices, ivec2(stage, xy.y)).rgba;
-  vec2 p = get_pixel(input_texture, ivec2(xy.x, data.z)).rg;
-  vec2 q = get_pixel(input_texture, ivec2(xy.x, data.w)).rg;
-  vec2 w = vec2(data.x, data.y);
-
-  //Butterfly operation
-  vec2 H = p + cmul(w, q);
-
-  frag = vec4(H, 0, 1);
-}
-
-void main(void) {
-  if(direction == 0)
-    horizontalButterflies();
-  else verticalButterflies();
 }
