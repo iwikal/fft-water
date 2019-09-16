@@ -26,8 +26,8 @@ void main() {
 
   float height_left  = position_at_coordinates(x - 1, y).y;
   float height_right = position_at_coordinates(x + 1, y).y;
-  float height_up =    position_at_coordinates(x, y - 1).y;
-  float height_down =  position_at_coordinates(x, y + 1).y;
+  float height_up    = position_at_coordinates(x, y - 1).y;
+  float height_down  = position_at_coordinates(x, y + 1).y;
 
   normal.x = height_left - height_right;
   normal.y = height_down - height_up;
